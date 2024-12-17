@@ -14,7 +14,13 @@
             :style="pageStyle"
           >
             <div class="page-content">
-              第 {{ page }} 页内容
+              <img 
+                :src="pageImages[page]" 
+                @load="onImageLoad(page)" 
+                v-if="pageImages[page]" 
+                :alt="`Page ${page}`"
+              />
+              <div v-else class="loading">加载中...</div>
             </div>
           </div>
           <div class="page-number">{{ page }}/{{ props.totalPages }}</div>
@@ -40,7 +46,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 const props = defineProps({
   totalPages: {
@@ -52,6 +58,7 @@ const props = defineProps({
 const currentPage = ref(1)
 const scale = ref(100)
 const selectedPages = ref(new Set())
+const pageImages = ref({})
 
 const pages = computed(() => 
   Array.from({ length: props.totalPages }, (_, i) => i + 1)
@@ -62,11 +69,11 @@ const handleScaleChange = (event) => {
 }
 
 const togglePageSelection = (page) => {
-  // if (selectedPages.value.has(page)) {
-  //   selectedPages.value.delete(page)
-  // } else {
-  //   selectedPages.value.add(page)
-  // }
+  if (selectedPages.value.has(page)) {
+    selectedPages.value.delete(page)
+  } else {
+    selectedPages.value.add(page)
+  }
 }
 
 const pageStyle = computed(() => {
@@ -78,6 +85,34 @@ const pageStyle = computed(() => {
     flexShrink: 0
   }
 })
+
+async function loadPage(pageNum) {
+  try {
+    const result = await window.api.getPageImage(pageNum)
+    if (result.success) {
+      pageImages.value[pageNum] = `data:image/png;base64,${result.imageData}`
+    } else {
+      console.error('Failed to load page:', result.error)
+    }
+  } catch (error) {
+    console.error('Error loading page:', error)
+  }
+}
+
+function onImageLoad(pageNum) {
+  // 图片加载完成后，加载下一页
+  if (pageNum < props.totalPages) {
+    loadPage(pageNum + 1)
+  }
+}
+
+// 当页数改变时，开始加载图片
+watch(() => props.totalPages, (newValue) => {
+  if (newValue > 0) {
+    pageImages.value = {}
+    loadPage(1)
+  }
+}, { immediate: true })
 </script>
 
 <style scoped>
@@ -145,11 +180,21 @@ const pageStyle = computed(() => {
   display: flex;
   justify-content: center;
   align-items: center;
-  color: #999;
-  font-size: 1.2rem;
   padding: 1rem;
   background: white;
   border-radius: 8px;
+  overflow: hidden;
+}
+
+.page-content img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.loading {
+  color: #999;
+  font-size: 1.2rem;
 }
 
 .page-number {

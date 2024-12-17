@@ -3,6 +3,8 @@ import fs from 'fs'
 import { join } from "path";
 
 let pdfjsLib = null
+let currentPDF = null
+let currentImages = []
 
 // 初始化 PDF.js
 async function initPDFJS() {
@@ -74,6 +76,9 @@ async function convertPDFToImages(pdf, outputDir, scale = 4.0) {
       console.log(`Converted page ${pageNum}/${pdf.numPages}`)
     }
 
+    // 保存当前图片列表
+    currentImages = images
+
     return {
       success: true,
       totalPages: pdf.numPages,
@@ -91,24 +96,58 @@ async function convertPDFToImages(pdf, outputDir, scale = 4.0) {
 
 async function getPDFInfo(pdfPath) {
   try {
-
-    
     // 确保 PDF.js 已初始化
     const pdfjsLib = await initPDFJS()
-    // 加载PDF
-    const pdf = await loadPDF(pdfjsLib, pdfPath)
     
+    // 加载PDF
+    currentPDF = await loadPDF(pdfjsLib, pdfPath)
+    
+    // 转换为图片
+    const outputDir = join(process.cwd(), 'resources', 'images')
+    const result = await convertPDFToImages(currentPDF, outputDir)
 
-    convertPDFToImages(pdf, join(process.cwd(), 'resources', 'images'))
+    if (!result.success) {
+      throw new Error(result.error)
+    }
 
     return {
-      numPages: pdf.numPages,
+      success: true,
+      numPages: currentPDF.numPages,
       fileName: pdfPath.split(/[\\/]/).pop()
     }
-    
-    
   } catch (error) {
     console.error('Error getting PDF info:', error)
+    currentPDF = null
+    currentImages = []
+    return {
+      success: false,
+      error: error.message
+    }
+  }
+}
+
+// 获取指定页面的图片
+async function getPageImage(pageNum) {
+  try {
+    if (!currentPDF || currentImages.length === 0) {
+      throw new Error('No PDF loaded or no images available')
+    }
+
+    if (pageNum < 1 || pageNum > currentImages.length) {
+      throw new Error(`Invalid page number: ${pageNum}`)
+    }
+
+    const imagePath = currentImages[pageNum - 1]
+    const imageBuffer = await fs.promises.readFile(imagePath)
+    
+    return {
+      success: true,
+      imageData: imageBuffer.toString('base64'),
+      width: 0,  // TODO: 获取实际宽度
+      height: 0  // TODO: 获取实际高度
+    }
+  } catch (error) {
+    console.error('Error getting page image:', error)
     return {
       success: false,
       error: error.message
@@ -135,10 +174,10 @@ export function setupPDFHandlers() {
     return getPDFInfo(filePath)
   })
 
-  // PDF 转图片
-  ipcMain.handle('convert-pdf-to-images', async (event, { pdfPath, outputDir, scale }) => {
-    return convertPDFToImages(pdfPath, outputDir, scale)
+  // 获取页面图片
+  ipcMain.handle('get-page-image', async (event, { pageNum }) => {
+    return getPageImage(pageNum)
   })
 }
 
-export { convertPDFToImages, cleanupImages }
+export { cleanupImages }

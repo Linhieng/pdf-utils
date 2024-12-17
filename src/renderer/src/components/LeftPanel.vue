@@ -14,7 +14,6 @@
         </label>
       </div>
     </div>
-    
     <div class="info-section" v-if="pdfInfo">
       <h2 class="info-title">PDF 文件信息</h2>
       <div class="info-content">
@@ -41,13 +40,15 @@ const handleFileSelect = async (event) => {
   const file = event.target.files[0]
   if (file && file.type === 'application/pdf') {
     try {
-      const info = await window.electron.ipcRenderer.invoke('get-pdf-info', {
-        filePath: file.path
-      })
-      pdfInfo.value = info
-      emit('file-selected', { file, info })
+      const result = await window.api.getPDFInfo(file.path)
+      if (result.success) {
+        pdfInfo.value = result
+        emit('file-selected', { file, info: result })
+      } else {
+        console.error('Failed to load PDF:', result.error)
+      }
     } catch (error) {
-      console.error('Error getting PDF info:', error)
+      console.error('Error loading PDF:', error)
     }
   }
 }

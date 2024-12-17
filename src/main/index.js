@@ -2,7 +2,10 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { setupPDFHandlers } from './pdfHandler'
+import { setupPDFHandlers, cleanupImages } from './pdfHandler'
+
+// 图片输出目录
+const IMAGES_DIR = join(process.cwd(), 'resources', 'images')
 
 function createWindow() {
   // Create the browser window.
@@ -36,6 +39,16 @@ function createWindow() {
   }
 }
 
+// 设置 IPC 处理程序
+function setupIPCHandlers() {
+  setupPDFHandlers()
+
+  // 应用退出时清理临时文件
+  app.on('will-quit', () => {
+    cleanupImages(IMAGES_DIR)
+  })
+}
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -53,10 +66,8 @@ app.whenReady().then(() => {
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
 
-  // Set up the PDF handlers
-  setupPDFHandlers()
-
   createWindow()
+  setupIPCHandlers()
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the

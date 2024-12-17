@@ -1,10 +1,11 @@
 import { ipcMain } from 'electron'
 import fs from 'fs'
-import { join } from "path";
+import { join } from "path"
+import { Worker } from 'worker_threads'
 
 let pdfjsLib = null
 let currentPDF = null
-let currentImages = []
+let pdfWorker = null
 
 // 初始化 PDF.js
 async function initPDFJS() {
@@ -14,79 +15,98 @@ async function initPDFJS() {
   return pdfjsLib
 }
 
-async function loadPDF(pdfjsLib, pdfPath) {
-    // 读取 PDF 文件
-    const data = new Uint8Array(await fs.promises.readFile(pdfPath))
-    
-    const CMAP_URL = join(__dirname, "../../node_modules/pdfjs-dist/cmaps/");
-    const CMAP_PACKED = true;
-    const STANDARD_FONT_DATA_URL = join(__dirname, "../../node_modules/pdfjs-dist/standard_fonts/");
-    
-    // 加载 PDF 文档
-    const pdf = await pdfjsLib.getDocument({
-      data,
-      cMapUrl: CMAP_URL,
-      cMapPacked: CMAP_PACKED,
-      standardFontDataUrl: STANDARD_FONT_DATA_URL,
-    }).promise
+// 创建 PDF Worker
+function createPDFWorker() {
+  if (!pdfWorker) {
+    pdfWorker = new Worker(`
+      const { parentPort } = require('worker_threads');
+      const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+      const canvas = require('canvas');
 
-    return pdf
+      parentPort.on('message', async ({ pageNum, pdfData, scale }) => {
+        try {
+          // 加载 PDF
+          const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale });
+
+          // 创建 canvas
+          const canvasInstance = canvas.createCanvas(viewport.width, viewport.height);
+          const context = canvasInstance.getContext('2d');
+
+          // 渲染页面
+          await page.render({
+            canvasContext: context,
+            viewport,
+          }).promise;
+
+          // 转换为图片
+          const imageBuffer = canvasInstance.toBuffer('image/png');
+          
+          parentPort.postMessage({
+            success: true,
+            imageData: imageBuffer.toString('base64'),
+            width: viewport.width,
+            height: viewport.height
+          });
+        } catch (error) {
+          parentPort.postMessage({
+            success: false,
+            error: error.message
+          });
+        }
+      });
+    `, { eval: true });
+  }
+  return pdfWorker;
 }
 
-async function convertPDFToImages(pdf, outputDir, scale = 4.0) {
+async function loadPDF(pdfjsLib, pdfPath) {
+  // 读取 PDF 文件
+  const data = new Uint8Array(await fs.promises.readFile(pdfPath))
+  
+  const CMAP_URL = join(__dirname, "../../node_modules/pdfjs-dist/cmaps/");
+  const CMAP_PACKED = true;
+  const STANDARD_FONT_DATA_URL = join(__dirname, "../../node_modules/pdfjs-dist/standard_fonts/");
+  
+  // 加载 PDF 文档
+  const pdf = await pdfjsLib.getDocument({
+    data,
+    cMapUrl: CMAP_URL,
+    cMapPacked: CMAP_PACKED,
+    standardFontDataUrl: STANDARD_FONT_DATA_URL,
+  }).promise
+
+  return pdf
+}
+
+// 获取指定页面的图片
+async function getPageImage(pageNum, scale = 4.0) {
   try {
-    // 确保输出目录存在
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true })
+    if (!currentPDF) {
+      throw new Error('No PDF loaded')
     }
 
-    const images = []
+    if (pageNum < 1 || pageNum > currentPDF.numPages) {
+      throw new Error(`Invalid page number: ${pageNum}`)
+    }
+
+    const worker = createPDFWorker();
     
-    // 遍历每一页并转换为图片
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum)
-      const viewport = page.getViewport({ scale })
-      
-      // 创建 canvas
-      const canvasFactory = pdf.canvasFactory
-      const canvasAndContext = canvasFactory.create(
-        viewport.width,
-        viewport.height
-      )
+    return new Promise((resolve) => {
+      worker.once('message', (result) => {
+        resolve(result);
+      });
 
-      // 渲染页面
-      const renderContext = {
-        canvasContext: canvasAndContext.context,
-        viewport,
-      }
-
-      await page.render(renderContext).promise
-
-      // 转换为图片并保存
-      const image = canvasAndContext.canvas.toBuffer('image/png')
-      const imagePath = join(outputDir, `page-${pageNum}.png`)
-      await fs.promises.writeFile(imagePath, image)
-      
-      images.push(imagePath)
-
-      // 释放资源
-      page.cleanup()
-      canvasFactory.destroy(canvasAndContext)
-
-      console.log(`Converted page ${pageNum}/${pdf.numPages}`)
-    }
-
-    // 保存当前图片列表
-    currentImages = images
-
-    return {
-      success: true,
-      totalPages: pdf.numPages,
-      images
-    }
-
+      // 发送任务给 Worker
+      worker.postMessage({
+        pageNum,
+        pdfData: currentPDF._pdfInfo.data,
+        scale
+      });
+    });
   } catch (error) {
-    console.error('Error converting PDF to images:', error)
+    console.error('Error getting page image:', error)
     return {
       success: false,
       error: error.message
@@ -101,14 +121,6 @@ async function getPDFInfo(pdfPath) {
     
     // 加载PDF
     currentPDF = await loadPDF(pdfjsLib, pdfPath)
-    
-    // 转换为图片
-    const outputDir = join(process.cwd(), 'resources', 'images')
-    const result = await convertPDFToImages(currentPDF, outputDir)
-
-    if (!result.success) {
-      throw new Error(result.error)
-    }
 
     return {
       success: true,
@@ -118,7 +130,6 @@ async function getPDFInfo(pdfPath) {
   } catch (error) {
     console.error('Error getting PDF info:', error)
     currentPDF = null
-    currentImages = []
     return {
       success: false,
       error: error.message
@@ -126,33 +137,13 @@ async function getPDFInfo(pdfPath) {
   }
 }
 
-// 获取指定页面的图片
-async function getPageImage(pageNum) {
-  try {
-    if (!currentPDF || currentImages.length === 0) {
-      throw new Error('No PDF loaded or no images available')
-    }
-
-    if (pageNum < 1 || pageNum > currentImages.length) {
-      throw new Error(`Invalid page number: ${pageNum}`)
-    }
-
-    const imagePath = currentImages[pageNum - 1]
-    const imageBuffer = await fs.promises.readFile(imagePath)
-    
-    return {
-      success: true,
-      imageData: imageBuffer.toString('base64'),
-      width: 0,  // TODO: 获取实际宽度
-      height: 0  // TODO: 获取实际高度
-    }
-  } catch (error) {
-    console.error('Error getting page image:', error)
-    return {
-      success: false,
-      error: error.message
-    }
+// 清理资源
+function cleanup() {
+  if (pdfWorker) {
+    pdfWorker.terminate();
+    pdfWorker = null;
   }
+  currentPDF = null;
 }
 
 // 清理临时图片文件
@@ -171,13 +162,14 @@ function cleanupImages(directory) {
 export function setupPDFHandlers() {
   // 获取 PDF 信息
   ipcMain.handle('get-pdf-info', async (event, { filePath }) => {
+    cleanup(); // 清理之前的资源
     return getPDFInfo(filePath)
   })
 
   // 获取页面图片
-  ipcMain.handle('get-page-image', async (event, { pageNum }) => {
-    return getPageImage(pageNum)
+  ipcMain.handle('get-page-image', async (event, { pageNum, scale }) => {
+    return getPageImage(pageNum, scale)
   })
 }
 
-export { cleanupImages }
+export { cleanup, cleanupImages }

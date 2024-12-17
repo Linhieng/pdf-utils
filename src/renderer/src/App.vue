@@ -1,131 +1,110 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import * as pdfjsLib from 'pdfjs-dist'
+import { ref } from 'vue'
 
-// 设置 PDF.js worker 路径
-pdfjsLib.GlobalWorkerOptions.workerSrc = `./node_modules/pdfjs-dist/build/pdf.worker.min.js`
-
-const pdfDoc = ref(null)
-const pageNum = ref(1)
-const scale = ref(1.5)
-const canvas = ref(null)
 const fileName = ref('')
+const filePath = ref('')
+const pdfInfo = ref(null)
 
 // 处理文件选择
 const handleFileSelect = async (event) => {
   const file = event.target.files[0]
   if (file && file.type === 'application/pdf') {
     fileName.value = file.name
-    const fileReader = new FileReader()
+    filePath.value = file.path // Electron 提供的本地文件路径
     
-    fileReader.onload = async function() {
-      const typedarray = new Uint8Array(this.result)
-      try {
-        // 加载PDF文档
-        pdfDoc.value = await pdfjsLib.getDocument(typedarray).promise
-        // 渲染第一页
-        renderPage(1)
-      } catch (error) {
-        console.error('Error loading PDF:', error)
-      }
+    try {
+      // 获取PDF信息
+      const info = await window.electron.ipcRenderer.invoke('get-pdf-info', {
+        filePath: file.path
+      })
+      console.log(info)
+      pdfInfo.value = info
+    } catch (error) {
+      console.error('Error getting PDF info:', error)
     }
-    
-    fileReader.readAsArrayBuffer(file)
   }
 }
-
-// 渲染PDF页面
-const renderPage = async (num) => {
-  if (!pdfDoc.value) return
-  
-  try {
-    const page = await pdfDoc.value.getPage(num)
-    const ctx = canvas.value.getContext('2d')
-    const viewport = page.getViewport({ scale: scale.value })
-
-    canvas.value.height = viewport.height
-    canvas.value.width = viewport.width
-
-    const renderContext = {
-      canvasContext: ctx,
-      viewport: viewport
-    }
-
-    await page.render(renderContext)
-  } catch (error) {
-    console.error('Error rendering page:', error)
-  }
-}
-
-onMounted(() => {
-  // 获取canvas元素引用
-  canvas.value = document.getElementById('pdf-canvas')
-})
 </script>
 
 <template>
-    <div class="container">
-        <div class="file-section">
-            <div class="file-input-container">
-                <input 
-                  type="file" 
-                  id="pdfFile" 
-                  accept=".pdf" 
-                  class="file-input"
-                  @change="handleFileSelect"
-                >
-                <label for="pdfFile" class="file-input-label">
-                    <span class="button-text">选择 PDF 文件</span>
-                </label>
-            </div>
-            <div class="file-name">{{ fileName }}</div>
+  <div class="container">
+    <div class="card">
+      <div class="file-section">
+        <div class="file-input-container">
+          <input 
+            type="file" 
+            id="pdfFile" 
+            accept=".pdf" 
+            class="file-input"
+            @change="handleFileSelect"
+          >
+          <label for="pdfFile" class="file-input-label">
+            <span class="button-text">选择 PDF 文件</span>
+          </label>
         </div>
-        <div class="preview-section">
-            <div class="preview-container">
-                <canvas 
-                  id="pdf-canvas" 
-                  v-show="pdfDoc"
-                  class="pdf-canvas"
-                ></canvas>
-                <div 
-                  class="preview-placeholder" 
-                  v-if="!pdfDoc"
-                >
-                    请选择 PDF 文件进行预览
-                </div>
-            </div>
+        <div class="file-name" v-if="fileName">当前文件：{{ fileName }}</div>
+      </div>
+      
+      <div class="info-section" v-if="pdfInfo">
+        <h2 class="info-title">PDF 文件信息</h2>
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">文件名</div>
+            <div class="info-value">{{ pdfInfo.fileName }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">总页数</div>
+            <div class="info-value">{{ pdfInfo.numPages }} 页</div>
+          </div>
+          <div class="info-item" v-if="pdfInfo.info?.Title">
+            <div class="info-label">标题</div>
+            <div class="info-value">{{ pdfInfo.info.Title }}</div>
+          </div>
+          <div class="info-item" v-if="pdfInfo.info?.Author">
+            <div class="info-label">作者</div>
+            <div class="info-value">{{ pdfInfo.info.Author }}</div>
+          </div>
+          <div class="info-item" v-if="pdfInfo.info?.CreationDate">
+            <div class="info-label">创建日期</div>
+            <div class="info-value">{{ pdfInfo.info.CreationDate }}</div>
+          </div>
+          <div class="info-item" v-if="pdfInfo.info?.ModDate">
+            <div class="info-label">修改日期</div>
+            <div class="info-value">{{ pdfInfo.info.ModDate }}</div>
+          </div>
         </div>
+      </div>
     </div>
+  </div>
 </template>
 
 <style scoped>
 .container {
+  padding: 2rem;
+  min-height: 100vh;
+  background-color: #f0f2f5;
   display: flex;
-  padding: 20px;
-  gap: 20px;
-  max-width: 1400px;
-  margin: 0 auto;
-  height: 100vh;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 800px;
+  padding: 2rem;
 }
 
 .file-section {
-  width: 300px;
-  padding: 20px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.preview-section {
-  flex: 1;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  overflow: hidden;
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #eee;
 }
 
 .file-input-container {
-  margin-bottom: 20px;
+  margin-bottom: 1rem;
 }
 
 .file-input {
@@ -133,41 +112,61 @@ onMounted(() => {
 }
 
 .file-input-label {
-  display: block;
-  padding: 12px 20px;
-  background-color: #4CAF50;
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  background-color: #1890ff;
   color: white;
-  text-align: center;
   border-radius: 4px;
   cursor: pointer;
-  transition: background-color 0.3s;
+  font-weight: 500;
+  transition: background-color 0.2s;
 }
 
 .file-input-label:hover {
-  background-color: #45a049;
+  background-color: #40a9ff;
 }
 
 .file-name {
-  word-break: break-all;
+  margin-top: 1rem;
   color: #666;
-  font-size: 14px;
+  font-size: 0.9rem;
 }
 
-.preview-container {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.info-section {
   background-color: #fafafa;
+  border-radius: 6px;
+  padding: 1.5rem;
 }
 
-.preview-placeholder {
-  color: #999;
-  font-size: 16px;
+.info-title {
+  margin: 0 0 1.5rem 0;
+  color: #262626;
+  font-size: 1.25rem;
+  font-weight: 500;
 }
 
-.pdf-canvas {
-  max-width: 100%;
-  height: auto;
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.info-item {
+  background: white;
+  padding: 1rem;
+  border-radius: 4px;
+  border: 1px solid #f0f0f0;
+}
+
+.info-label {
+  color: #8c8c8c;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.info-value {
+  color: #262626;
+  font-size: 1rem;
+  word-break: break-word;
 }
 </style>

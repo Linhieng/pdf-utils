@@ -25,11 +25,8 @@ async function getPDFInfo(pdfPath) {
     // 获取文档信息
     const metadata = await doc.getMetadata()
 
-
     return {
       numPages: doc.numPages,
-      info: metadata.info,
-      metadata: metadata.metadata,
       fileName: pdfPath.split(/[\\/]/).pop()
     }
   } catch (error) {

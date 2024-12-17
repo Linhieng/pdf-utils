@@ -28,7 +28,7 @@ const handleFileSelect = async (event) => {
 
 <template>
   <div class="container">
-    <div class="card">
+    <div class="sidebar">
       <div class="file-section">
         <div class="file-input-container">
           <input 
@@ -42,37 +42,23 @@ const handleFileSelect = async (event) => {
             <span class="button-text">选择 PDF 文件</span>
           </label>
         </div>
-        <div class="file-name" v-if="fileName">当前文件：{{ fileName }}</div>
       </div>
       
       <div class="info-section" v-if="pdfInfo">
-        <h2 class="info-title">PDF 文件信息</h2>
-        <div class="info-grid">
-          <div class="info-item">
-            <div class="info-label">文件名</div>
-            <div class="info-value">{{ pdfInfo.fileName }}</div>
-          </div>
-          <div class="info-item">
-            <div class="info-label">总页数</div>
-            <div class="info-value">{{ pdfInfo.numPages }} 页</div>
-          </div>
-          <div class="info-item" v-if="pdfInfo.info?.Title">
-            <div class="info-label">标题</div>
-            <div class="info-value">{{ pdfInfo.info.Title }}</div>
-          </div>
-          <div class="info-item" v-if="pdfInfo.info?.Author">
-            <div class="info-label">作者</div>
-            <div class="info-value">{{ pdfInfo.info.Author }}</div>
-          </div>
-          <div class="info-item" v-if="pdfInfo.info?.CreationDate">
-            <div class="info-label">创建日期</div>
-            <div class="info-value">{{ pdfInfo.info.CreationDate }}</div>
-          </div>
-          <div class="info-item" v-if="pdfInfo.info?.ModDate">
-            <div class="info-label">修改日期</div>
-            <div class="info-value">{{ pdfInfo.info.ModDate }}</div>
-          </div>
+        <div class="info-item">
+          <div class="info-label">文件名</div>
+          <div class="info-value">{{ pdfInfo.fileName }}</div>
         </div>
+        <div class="info-item">
+          <div class="info-label">总页数</div>
+          <div class="info-value">{{ pdfInfo.numPages }} 页</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="preview-container">
+      <div class="preview-placeholder">
+        PDF 预览区域
       </div>
     </div>
   </div>
@@ -80,27 +66,40 @@ const handleFileSelect = async (event) => {
 
 <style scoped>
 .container {
-  padding: 2rem;
   min-height: 100vh;
   background-color: #f0f2f5;
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
 }
 
-.card {
+.sidebar {
+  width: 300px;
+  background: white;
+  padding: 1.5rem;
+  border-right: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.preview-container {
+  flex: 1;
+  padding: 1.5rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.preview-placeholder {
+  width: 100%;
+  height: 100%;
   background: white;
   border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #999;
+  font-size: 1.2rem;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-  width: 100%;
-  max-width: 800px;
-  padding: 2rem;
-}
-
-.file-section {
-  margin-bottom: 2rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid #eee;
 }
 
 .file-input-container {
@@ -120,35 +119,18 @@ const handleFileSelect = async (event) => {
   cursor: pointer;
   font-weight: 500;
   transition: background-color 0.2s;
+  width: 100%;
+  text-align: center;
 }
 
 .file-input-label:hover {
   background-color: #40a9ff;
 }
 
-.file-name {
-  margin-top: 1rem;
-  color: #666;
-  font-size: 0.9rem;
-}
-
 .info-section {
   background-color: #fafafa;
   border-radius: 6px;
-  padding: 1.5rem;
-}
-
-.info-title {
-  margin: 0 0 1.5rem 0;
-  color: #262626;
-  font-size: 1.25rem;
-  font-weight: 500;
-}
-
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
+  padding: 1rem;
 }
 
 .info-item {
@@ -156,6 +138,11 @@ const handleFileSelect = async (event) => {
   padding: 1rem;
   border-radius: 4px;
   border: 1px solid #f0f0f0;
+  margin-bottom: 1rem;
+}
+
+.info-item:last-child {
+  margin-bottom: 0;
 }
 
 .info-label {

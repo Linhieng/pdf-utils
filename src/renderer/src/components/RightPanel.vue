@@ -55,10 +55,10 @@ const props = defineProps({
   }
 })
 
-const pageImages = ref({})
+const currentPage = ref(1)
 const scale = ref(100)
 const selectedPages = ref(new Set())
-const currentLoadingPage = ref(null)
+const pageImages = ref({})
 
 const pages = computed(() => 
   Array.from({ length: props.totalPages }, (_, i) => i + 1)
@@ -86,47 +86,30 @@ const pageStyle = computed(() => {
   }
 })
 
-// 重置状态
-function resetState() {
-  pageImages.value = {}
-  selectedPages.value = new Set()
-  currentLoadingPage.value = null
-}
-
-// 加载指定页面
 async function loadPage(pageNum) {
   try {
-    // 如果已经在加载或已经加载完成，则跳过
-    if (currentLoadingPage.value === pageNum || pageImages.value[pageNum]) {
-      return
-    }
-
-    currentLoadingPage.value = pageNum
     const result = await window.api.getPageImage(pageNum)
     if (result.success) {
       pageImages.value[pageNum] = `data:image/png;base64,${result.imageData}`
     } else {
       console.error('Failed to load page:', result.error)
     }
-    currentLoadingPage.value = null
   } catch (error) {
     console.error('Error loading page:', error)
-    currentLoadingPage.value = null
   }
 }
 
-// 当图片加载完成时，加载下一页
 function onImageLoad(pageNum) {
+  // 图片加载完成后，加载下一页
   if (pageNum < props.totalPages) {
     loadPage(pageNum + 1)
   }
 }
 
-// 监听总页数变化
+// 当页数改变时，开始加载图片
 watch(() => props.totalPages, (newValue) => {
   if (newValue > 0) {
-    resetState()
-    // 开始加载第一页
+    pageImages.value = {}
     loadPage(1)
   }
 }, { immediate: true })
@@ -136,11 +119,11 @@ watch(() => props.totalPages, (newValue) => {
 .right-panel {
   flex: 1;
   height: 100vh;
-  position: relative;
   background-color: #f0f2f5;
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 .preview-area {
